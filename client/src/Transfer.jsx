@@ -1,7 +1,10 @@
 import { useState } from "react";
 import server from "./server";
+import * as secp from "ethereum-cryptography/secp256k1";
+import { toHex, utf8ToBytes } from "ethereum-cryptography/utils";
+import { keccak256 } from "ethereum-cryptography/keccak";
 
-function Transfer({ address, setBalance }) {
+function Transfer({ address, setBalance, privateKey }) {
   const [sendAmount, setSendAmount] = useState("");
   const [recipient, setRecipient] = useState("");
 
@@ -9,18 +12,31 @@ function Transfer({ address, setBalance }) {
 
   async function transfer(evt) {
     evt.preventDefault();
-
+    
     try {
-      const {
-        data: { balance },
-      } = await server.post(`send`, {
+      // Создаем сообщение для подписи
+      const message = {
         sender: address,
         amount: parseInt(sendAmount),
-        recipient,
+        recipient
+      };
+      
+      // Хешируем сообщение
+      const messageHash = keccak256(utf8ToBytes(JSON.stringify(message)));
+      
+      // Создаем подпись
+      const [signature, recoveryBit] = await secp.sign(messageHash, privateKey, { recovered: true });
+      
+      // Отправляем транзакцию на сервер
+      const response = await server.post(`send`, {
+        ...message,
+        signature: toHex(signature),
+        recoveryBit
       });
-      setBalance(balance);
+      
+      setBalance(response.data.balance);
     } catch (ex) {
-      alert(ex.response.data.message);
+      alert(ex.response?.data?.message || "Transaction failed");
     }
   }
 
@@ -34,19 +50,23 @@ function Transfer({ address, setBalance }) {
           placeholder="1, 2, 3..."
           value={sendAmount}
           onChange={setValue(setSendAmount)}
-        ></input>
+          type="number"
+          min="1"
+          required
+        />
       </label>
 
       <label>
         Recipient
         <input
-          placeholder="Type an address, for example: 0x2"
+          placeholder="Type recipient address"
           value={recipient}
           onChange={setValue(setRecipient)}
-        ></input>
+          required
+        />
       </label>
 
-      <input type="submit" className="button" value="Transfer" />
+      <button type="submit">Transfer</button>
     </form>
   );
 }

@@ -1,0 +1,389 @@
+// wallet #1
+import server from "./server";
+import * as secp from "ethereum-cryptography/secp256k1";
+import { toHex } from "ethereum-cryptography/utils"
+import { useState } from "react";
+
+function Wallet({ address, setAddress, balance, setBalance, privateKey, setPrivateKey }) {
+
+  async function onChange(evt) {
+    const privateKey = evt.target.value;
+    setPrivateKey(privateKey);
+    const address = toHex(secp.secp256k1.getPublicKey(privateKey));
+    setAddress(address);
+    if (address) {
+      const {
+        data: { balance },
+      } = await server.get(`balance/${address}`);
+      setBalance(balance);
+    } else {
+      setBalance(0);
+    }
+  }
+
+
+  return (
+    <div className="container wallet">
+      <h1>Your Wallet</h1>
+
+      <label>
+        Private Key
+        <input placeholder="Type your private key" value={privateKey} onChange={onChange}></input>
+      </label>
+
+      <div className="address">address: {address}</div>
+
+      <div className="balance">Balance: {balance}</div>
+    </div>
+  );
+}
+
+export default Wallet;
+
+
+// wallet #2
+import server from "./server";
+import * as secp from "ethereum-cryptography/secp256k1";
+import { toHex } from "ethereum-cryptography/utils"
+import { useState } from "react";
+
+function Wallet({ address, setAddress, balance, setBalance, privateKey, setPrivateKey }) {
+  async function onChange(evt) {
+    const privateKey = evt.target.value;
+    setPrivateKey(privateKey);
+    const address = toHex(secp.secp256k1.getPublicKey(privateKey));
+    setAddress(address);
+    if (address) {
+      const {
+        data: { balance },
+      } = await server.get(`balance/${address}`);
+      setBalance(balance);
+    } else {
+      setBalance(0);
+    }
+  }
+
+  return (
+    <div className="container wallet">
+      <h1>Your Wallet</h1>
+
+      <label>
+        Private Key
+        <input placeholder="Type your private key" value={privateKey} onChange={onChange}></input>
+      </label>
+
+      <div className="address">address: {address}</div>
+
+      <div className="balance">Balance: {balance}</div>
+    </div>
+  );
+}
+
+export default Wallet;
+
+// index #1
+const keccak256 = require("ethereum-cryptography/keccak.js").keccak256;
+const secp256k1 = require("ethereum-cryptography/secp256k1").secp256k1;
+
+const express = require("express");
+const app = express();
+const cors = require("cors");
+const port = 3042;
+
+app.use(cors());
+app.use(express.json());
+
+const balances = {
+  "02725df4f910e8b322e1a4bfc0f66d6ab428239e4d4b7969d23e0a89b95ad56fd6": 100,
+  "03330e89e857539754ccd6e03f2fff6b4c5b4a1bffe2057a8c2154a2c95745dd39": 50,
+  "03ffc07b4e03a4dded478f946b2ef061217da6d2ea3c9b6dc18ebecf213403f307": 75,
+};
+
+app.get("/balance/:address", (req, res) => {
+  const { address } = req.params;
+  const balance = balances[address] || 0;
+  res.send({ balance });
+});
+
+app.post("/send", (req, res) => {
+  const transaction = req.body;
+  console.log(transaction);
+  const { sender, recipient, amount, hexSign } = transaction;
+  const senderHash = keccak256(Uint8Array.from(sender));
+  const isSigned = secp256k1.verify(hexSign, senderHash, sender);
+  console.log("Is signed: ", isSigned);
+
+  if (isSigned) {
+    setInitialBalance(sender);
+    setInitialBalance(recipient);
+
+    if (balances[sender] < amount) {
+      res.status(400).send({ message: "Not enough funds!" });
+    } else {
+      balances[sender] -= amount;
+      balances[recipient] += amount;
+      res.send({ balance: balances[sender] });
+    }
+  }
+  else {
+    res.status(400).send({ message: "Invalid signature!" });
+  }
+});
+
+app.listen(port, () => {
+  console.log(`Listening on port ${port}!`);
+});
+
+function setInitialBalance(address) {
+  if (!balances[address]) {
+    balances[address] = 0;
+  }
+}
+
+
+// index #2
+// index.js
+const { keccak256 } = require("ethereum-cryptography/keccak");
+const { secp256k1 } = require("ethereum-cryptography/secp256k1");
+const { toHex, utf8ToBytes } = require("ethereum-cryptography/utils");
+
+const express = require("express");
+const app = express();
+const cors = require("cors");
+const port = 3042;
+
+app.use(cors());
+app.use(express.json());
+
+const balances = {
+  "02725df4f910e8b322e1a4bfc0f66d6ab428239e4d4b7969d23e0a89b95ad56fd6": 100,
+  "03330e89e857539754ccd6e03f2fff6b4c5b4a1bffe2057a8c2154a2c95745dd39": 50,
+  "03ffc07b4e03a4dded478f946b2ef061217da6d2ea3c9b6dc18ebecf213403f307": 75,
+};
+
+app.get("/balance/:address", (req, res) => {
+  const { address } = req.params;
+  const balance = balances[address] || 0;
+  res.send({ balance });
+});
+
+app.post("/send", (req, res) => {
+  const transaction = req.body;
+  console.log(transaction);
+  
+  const { sender, recipient, amount, signature, recoveryBit } = transaction;
+  
+  // Создаем хеш всех полей транзакции
+  const message = JSON.stringify({
+    sender,
+    amount,
+    recipient
+  });
+  const messageHash = keccak256(utf8ToBytes(message));
+  
+  // Восстанавливаем публичный ключ из подписи
+  const publicKey = secp256k1.recoverPublicKey(messageHash, signature, recoveryBit);
+  const senderAddress = toHex(publicKey);
+  
+  // Проверяем что подпись действительна и что отправитель совпадает
+  const isSigned = secp256k1.verify(signature, messageHash, publicKey);
+  const isSenderValid = senderAddress === sender;
+
+  console.log("Is signed: ", isSigned);
+  console.log("Is sender valid: ", isSenderValid);
+
+  if (isSigned && isSenderValid) {
+    setInitialBalance(sender);
+    setInitialBalance(recipient);
+
+    if (balances[sender] < amount) {
+      res.status(400).send({ message: "Not enough funds!" });
+    } else {
+      balances[sender] -= amount;
+      balances[recipient] += amount;
+      res.send({ balance: balances[sender] });
+    }
+  } else {
+    res.status(400).send({ message: "Invalid signature or sender mismatch!" });
+  }
+});
+
+app.listen(port, () => {
+  console.log(`Listening on port ${port}!`);
+});
+
+function setInitialBalance(address) {
+  if (!balances[address]) {
+    balances[address] = 0;
+  }
+}
+
+// index #3
+
+const { keccak256 } = require("ethereum-cryptography/keccak");
+const { secp256k1 } = require("ethereum-cryptography/secp256k1");
+const { toHex, utf8ToBytes } = require("ethereum-cryptography/utils");
+
+const express = require("express");
+const app = express();
+const cors = require("cors");
+const port = 3042;
+
+app.use(cors());
+app.use(express.json());
+
+const balances = {
+  "02725df4f910e8b322e1a4bfc0f66d6ab428239e4d4b7969d23e0a89b95ad56fd6": 100,
+  "03330e89e857539754ccd6e03f2fff6b4c5b4a1bffe2057a8c2154a2c95745dd39": 50,
+  "03ffc07b4e03a4dded478f946b2ef061217da6d2ea3c9b6dc18ebecf213403f307": 75,
+};
+
+app.get("/balance/:address", (req, res) => {
+  const { address } = req.params;
+  const balance = balances[address] || 0;
+  res.send({ balance });
+});
+
+app.post("/send", (req, res) => {
+  const transaction = req.body;
+  console.log("Received transaction:", transaction);
+  
+  const { sender, recipient, amount, signature, recoveryBit } = transaction;
+  
+  // Проверяем наличие всех полей
+  if (!sender || !recipient || !amount || !signature || recoveryBit === undefined) {
+    return res.status(400).send({ message: "Missing transaction fields" });
+  }
+
+  // Создаем хеш всех полей транзакции
+  const message = JSON.stringify({ sender, amount, recipient });
+  const messageHash = keccak256(utf8ToBytes(message));
+  
+  try {
+    // Конвертируем подпись из hex в Uint8Array
+    const signatureBytes = hexToBytes(signature);
+    
+    // Восстанавливаем публичный ключ
+    const publicKey = secp256k1.recoverPublicKey(messageHash, signatureBytes, recoveryBit);
+    const senderAddress = toHex(publicKey);
+    
+    // Проверяем подпись и соответствие отправителя
+    const isSigned = secp256k1.verify(signatureBytes, messageHash, publicKey);
+    const isSenderValid = senderAddress === sender;
+
+    if (!isSigned || !isSenderValid) {
+      return res.status(400).send({ message: "Invalid signature or sender mismatch" });
+    }
+
+    // Обрабатываем транзакцию
+    setInitialBalance(sender);
+    setInitialBalance(recipient);
+
+    if (balances[sender] < amount) {
+      return res.status(400).send({ message: "Not enough funds!" });
+    }
+
+    balances[sender] -= amount;
+    balances[recipient] += amount;
+    res.send({ balance: balances[sender] });
+
+  } catch (error) {
+    console.error("Transaction error:", error);
+    res.status(400).send({ message: "Error processing transaction" });
+  }
+});
+
+function hexToBytes(hex) {
+  const bytes = new Uint8Array(hex.length / 2);
+  for (let i = 0; i < hex.length; i += 2) {
+    bytes[i / 2] = parseInt(hex.substr(i, 2), 16);
+  }
+  return bytes;
+}
+
+function setInitialBalance(address) {
+  if (!balances[address]) {
+    balances[address] = 0;
+  }
+}
+
+app.listen(port, () => {
+  console.log(`Listening on port ${port}!`);
+});
+
+
+//transfer #1
+import { useState } from "react";
+import server from "./server";
+import { keccak256 } from "ethereum-cryptography/keccak.js"
+import * as secp from "ethereum-cryptography/secp256k1";
+
+
+function Transfer({ address, setBalance, privateKey, setRtivateKey }) {
+  const [sendAmount, setSendAmount] = useState("");
+  const [recipient, setRecipient] = useState("");
+
+  const setValue = (setter) => (evt) => setter(evt.target.value);
+
+  async function transfer(evt) {
+    evt.preventDefault();
+    const senderHash = keccak256(Uint8Array.from(address));
+    const signature = secp.secp256k1.sign(senderHash, privateKey);
+    const transaction = {
+      sender: address,
+      amount: parseInt(sendAmount),
+      recipient: recipient,
+      hexSign: signature.toCompactHex()
+    }
+    console.log("trx: ", transaction);
+
+    try {
+      const {
+        data: { balance },
+      } = await server.post(`send`, transaction);
+      setBalance(balance);
+    } catch (ex) {
+      alert(ex.response.data.message);
+    }
+  }
+
+  return (
+    <form className="container transfer" onSubmit={transfer}>
+      <h1>Send Transaction</h1>
+
+      <label>
+        Send Amount
+        <input
+          placeholder="1, 2, 3..."
+          value={sendAmount}
+          onChange={setValue(setSendAmount)}
+        ></input>
+      </label>
+
+      <label>
+        Recipient
+        <input
+          placeholder="Type an address, for example: 0x2"
+          value={recipient}
+          onChange={setValue(setRecipient)}
+        ></input>
+      </label>
+
+      <input type="submit" className="button" value="Transfer" />
+    </form>
+  );
+}
+
+export default Transfer;
+
+
+
+// key #1
+private key:  19cf8707ca2d348cf49885573136e3078d8f3972927c3a6a720e511039bf1ff0
+public key:  02725df4f910e8b322e1a4bfc0f66d6ab428239e4d4b7969d23e0a89b95ad56fd6
+
+private key:  654ad73db4656eeef1d207e2576c144479737e39eceb35a01e6a48ba798edfd2
+public key:  03330e89e857539754ccd6e03f2fff6b4c5b4a1bffe2057a8c2154a2c95745dd39
+
+private key:  3a70ea25bf9076d8816a616e042ccbc9bc5d44b93dd266c95107e236e274f469
+public key:  03ffc07b4e03a4dded478f946b2ef061217da6d2ea3c9b6dc18ebecf213403f307
